@@ -1,0 +1,98 @@
+#! /bin/sh
+# Implement gbkdf in text mode.
+#
+# It generates an endless stream of output key material as lower case hex
+# digits; the consumer should just stop reading once enough key material has
+# been read.
+#
+# The path names of two files are required as arguments: The first file
+# contains the salt or arbitrary size as a series of binary bytes. The second
+# file shall provide the password in a single line of text using the current
+# locale's character set. Only the first line is read from the password file,
+# and any newline character at the end of the input line is not considered to
+# be part of the password.
+#
+# This script uses $TMPDIR (defaults to /tmp) to store temporary working files
+# containing sensitive data. It is therefore mandatory that $TMPDIR is either
+# a RAM disk or resides on a securely encrypted disk. Likewise, if the system
+# has been configured to use swap space, this swap space should be encrypted
+# as well in order to avoid leaking sensitive data there.
+
+set -e
+hashutil=md5sum
+iterations=10
+
+
+int2bytes() {
+	printf '%u' "$1"
+}
+
+
+int2pad() {
+	local n=$1
+	while test $n != 0
+	do
+		printf U
+		n=`expr $n - 1 || :`
+	done
+}
+
+
+h() {
+	"$hashutil" | sed 's/^\([0-9a-f]*\).*/\1/' | tr -d '\n'
+}
+
+
+if which hexdump > /dev/null 2>& 1
+then
+	xd() { hexdump -ve '/1 "%02X"' | tr A-F a-f; }
+else
+	xd() { od -An -tx1 | tr -dc 0-9a-f; }
+fi
+
+
+cleanup() {
+	test -n "$T" && rm -r -- "$T"
+	test -n "$OK" || echo "Failed!" >& 2
+}
+
+
+OK=
+T=
+trap cleanup 0
+
+test $# = 2
+test -f "$1"
+test -f "$2"
+ 
+T=`mktemp -d "${TMPDIR:-/tmp}/${0##/}".XXXXXXXXXX`
+salt=$T/salt
+sp=$T/salted_psw
+data=$T/data
+other=$T/other
+
+xd < "$1" > "$salt"
+{
+	cat "$salt"
+	head -n1 "$2" | iconv -t UTF-8 | tr -d '\n'
+	cat "$salt"
+} > "$sp"
+> "$data"
+
+while :
+do
+	n=1
+	while test $n -le $iterations
+	do
+		{
+			int2bytes $n
+			int2pad $n
+			cat "$data"
+			cat "$sp"
+		} | h > "$other"
+		t=$data; data=$other; other=$t
+		n=`expr $n + 1`
+	done
+	cat "$data" || break
+done
+OK=Y

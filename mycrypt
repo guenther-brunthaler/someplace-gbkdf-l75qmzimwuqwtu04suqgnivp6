@@ -1,0 +1,116 @@
+#! /bin/sh
+# Encrypt (-e) or decrypt (-d) stdin to stdout. Only argument: The pathame of
+# a file containing the password in current locale encoding in the first line.
+
+set -e
+saltbits=512
+pbkdf=./gbkdf
+encryption_order='aes-256-cbc#128$256 bf-cbc#64$128 des-ede3-cbc#64$192'
+encryption_order=$encryption_order' rc4#8$128'
+
+
+cleanup() {
+	test -n "$T" && rm -r -- "$T"
+	test -n "$OK" || echo "Failed!" >& 2
+}
+
+
+OK=
+T=
+trap cleanup 0
+
+mode=
+while getopts de OPT
+do
+	case $OPT in
+		e) mode=encrypt;;
+		d) mode=decrypt;;
+		*) false
+	esac
+done
+shift `expr $OPTIND - 1 || :`
+test -n "$mode"
+test $# = 1
+psw=$1
+test -n "$psw"
+test -f "$psw"
+
+T=`mktemp -d "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX`
+
+# Get salt.
+salt=$T/salt
+saltbytes=`expr $saltbits / 8`
+if test $mode = encrypt
+then
+	dd if=/dev/urandom bs=$saltbytes count=1 of="$salt" 2> /dev/null
+	cat "$salt"
+else
+	dd bs=$saltbytes count=1 of="$salt" 2> /dev/null
+fi
+
+# Split $algo into $algo, $blkbits and $keybits.
+parse_algo() {
+	keybits=${algo##*'$'}
+	algo=${algo%?"$keybits"}
+	blkbits=${algo##*'#'}
+	algo=${algo%?"$blkbits"}
+}
+
+set -- $encryption_order
+# Generate keys.
+"$pbkdf" "$salt" "$psw" | {
+	lastbbits=8
+	for algo
+	do
+		parse_algo
+		dd count=`expr $keybits / 4` bs=1 of="$T/$algo.psw" \
+			2> /dev/null
+		if
+			test $blkbits -gt $lastbbits \
+			|| expr $lastbbits % $blkbits != 0 > /dev/null
+		then
+			> "$T/$algo.pad"
+		fi
+		lastbbits=$blkbits
+	done
+}
+
+if test $mode = decrypt
+then
+	# Reverse argument order.
+	set -- "$@" --s --e
+	while :
+	do
+		while test x"$2" != x"--s"
+		do
+			set -- "$@" "$1"; shift
+		done
+		last=$1; shift
+		test x"$last" = x"--e" && break
+		while test x"$1" != x"--e"
+		do
+			set -- "$@" "$1"; shift
+		done
+		set -- "$last" "$@"
+	done
+	shift
+fi
+
+crypt() {
+	algo=$1; shift
+	if test -n "$1"
+	then
+		crypt "$algo" | crypt "$@"
+	else
+		parse_algo
+		set -- openssl enc -$algo \
+			-nosalt -pass "file:$T/$algo.psw" -md rmd160
+		test $mode = decrypt && set -- "$@" -d
+		test -e "$T/$algo.pad" || set -- "$@" -nopad
+		"$@"
+	fi
+}
+
+crypt "$@"
+
+OK=Y

@@ -7,7 +7,7 @@ First, some considerations about already existing ones.
 
 1. HKDF first compresses salt and password into a single hash then expands the result to the desired size. Obviously this cannot have stronger security than the size of the hash function's output.
 
-2. PBKDF2 uses the password only as the key of a pseudo-random function PRF which is another parameter. Although applying the PRF does not necessarily weaken the key, in practice HMACs hare typically used as PRF. And those also limit the security to the size of the hash function's output.
+2. PBKDF2 uses the password only as the key of a pseudo-random function PRF which is another parameter. Although applying an arbitrary PRF does not necessarily weaken the key per se, in practice HMACs are typically used as PRF. And those also limit the security to the size of the hash function's output.
 
 3. OpenSSL's "EVP_BytesToKey" key derivation function derives each segment D_i of output material as D_i = HASH^count(D_(i-1) || password || salt) where D_0 is an empty string and HASH^n(m) = HASH(HASH^(n-1)(m)) and HASH^1(m) = HASH(m).
 
@@ -49,23 +49,27 @@ I therefore suggest a modified version of the OpenSSL KDF as follows and call it
 
 * iter(n, data) := data for n == 0
 
-* iter(n, data) := h(int2bigendian(n) || int2pad(n) || iter(n - 1, data) || salt || password || salt) for all n > 0
+* iter(n, data) := h(int2bigendian(n) || int2pad(n) || iter(n - 1, data) || premult(salt) || password || salt) for all n > 0
 
 * int2bigendian(u) is <mode>-specific: For text mode, it is just the decimal ASCII representation of u with as few digits as possible (i. e. no  superfluous leading zero digits). For binary mode, it is the binary big-endian representation of unsigned integer u in as few octets as possible (i. e. without superfluous leading zero octets).
 
 * int2pad(n) produces n ASCII 'U' characters in text mode and n bytes with value 0xAA in binary mode. "U" (0x55) and 0xAA have the same regular bit  pattern of alternating "0" and "1" bits, except that all the bits of both  values are inverted when compared against each other. The purpose of  int2pad() is to avoid feeding password and salt at the same offsets into the  hash function for different steps of the iteration. This may strengthen the KDF against symbolic evaluation optimization attacks, because symbolic variables (the input bytes to be hashed) will be assigned differently for every iteration. It also means that iter() will take more time to compute the larger the iteration count c gets. This is exactly why an iteration count might be used at all: To artificially increase processing time, making brute force attacks on the password more costly.
 
-* Salt should be a randomly chosen binary string of at least 128 bit (16 bytes) in binary mode, but 256 bit (32 bytes) or even 512 bit (64 bytes) are preferable. In text mode, it shall have the same bit size of the underlying binary data, but shall be represented as a hexadecimal string made of decimal digits and lower-case characters.
+* Salt should be a randomly chosen binary string of at least 128 bit (16 bytes) in binary mode, but 256 bit (32 bytes) or even 512 bit (64 bytes) might be preferable. The absolute minimum size should be 64 bit (8 bytes), but this is not recommended and should only be used where encoded message size really matters. In text mode, it shall have the same bit size of the underlying binary data, but shall be represented as a hexadecimal string made of decimal digits and lower-case characters.
+
+* premult(s) is a simple and fixed 1:1 substitution for all octets of s. Its only purpose is to avoid feeding exactly the same octets into the hash function before and after the password. This is another protection against possible fixed points and attractors in the hash function. It is not a very important protection, though, and therefore kept rather simple: All byte values b are mapped to byte value ((b + 1) * 42 mod 257) - 1. That is, it is a modular multiplication by 42. The +1 and -1 are just there because 0 must be avoided as multiplicand and will also never be the result. Modulo 257 ensures that the mapping remains reversible, i. e. every input value maps to a different output in the same value range (I have verified this by checking all possible results). And regarding the value 42 - any value between 2 and 256 could have been used. But 42 carries more information than any other known number in this range - it conveys information about all the mysteries of the universe! See the Wikipedia article about this number if you have any doubts. Therefore it is one of the best numbers to be used whenever the choise is completely arbitrary. :-) The actual calculation is the same in text and binary mode, except that in text mode the input value must be converted from hexadecimal to a byte string before the calculation, and the result must be converted back to a hexadecimal lowercase string as output.
 
 * The output key material of the KDF will have the same representation as the salt, i. e. a pseudorandom stream of bytes for binary mode or lower-case hex digits for text mode.
 
-* The hash function <h> shall produce binary bytes in binary mode, and hexadecimal digits and lower-case characters in text mode.
+* The hash function <h> shall produce binary bytes in binary mode, and hexadecimal digits or lower-case characters in text mode.
 
 * The password shall be encoded as UTF-8 (which is a compatible superset of ASCII, i. e. the password can also be an ASCII string if ASCII characters are sufficient).
 
+* Before encoding UNICODE passwords as UTF-8, substitution blocks shall be avoided and normalization form NFC ("composed") shall be preferred over NFD ("decomposed") whereever there is a choice. In other words, UTF-8 Umlauts should be encoded the Linux/Windows way, not the Apple way. It is best to not allow non-ASCII characters in passwords at all, because then none of this matters. A solution for avoiding large UNICODE NFC/NFD mapping tables is to restrict the allowed non-ASCII characters in a password to those from a specific code page. If such a restriction is desirable, I strongly suggest codepage WINDOWS-1252 for this, usually referred to as "Oem" or "Ansi" on the Windows platform, because it is a superset of LATIN1 which also includes the Euro-Sign, but does this without removing other characters from LATIN1, what other codepages like ISO-8859-15 would actually do.
+
 This PBKDF does not use XOR to feed the result of the hash function back to its input as suggested above, but rather includes password and salt in every application of the hash function. This will combat the effects of fixed points or hash function attractors as well, because the primary source of information - password and salt - are always used directly as part of the input to the hash function.
 
-Avoiding XOR also allows easier implementation of the PBKDF in shell scripts, where there is usually no easy way of performing the XOR operation on larger blocks of binary data (or at all).
+Avoiding XOR also allows easier implementation of the PBKDF in shell scripts, where there is usually no easy way of performing the bitwise XOR operation on larger blocks of binary data (or at all).
 
 Shell script implementations can also loosen the definition above and use the ASCII representation of the counter instead of the binary big endian representation: Both differ only in the form of representation, but convey the same information.
 

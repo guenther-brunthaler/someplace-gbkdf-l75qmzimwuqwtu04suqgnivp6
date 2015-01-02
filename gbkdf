@@ -23,7 +23,7 @@ set -e
 hashutil=md5sum
 iterations=10
 # Set to non-empty for debugging.
-DEBUG=1
+DEBUG=
 
 
 int2bigendian() {
@@ -96,7 +96,7 @@ OK=
 T=
 trap cleanup 0
 
-while getopts Hi OPT
+while getopts H:i: OPT
 do
 	case $OPT in
 		H) hashutil=$OPTARG;;

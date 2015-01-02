@@ -19,11 +19,14 @@
 # as well in order to avoid leaking sensitive data there.
 
 set -e
+# Set defaults.
 hashutil=md5sum
 iterations=10
+# Set to non-empty for debugging.
+DEBUG=1
 
 
-int2bytes() {
+int2bigendian() {
 	printf '%u' "$1"
 }
 
@@ -43,6 +46,38 @@ h() {
 }
 
 
+hex2dec() {
+	{
+		tr -c 0-9a-f n
+		printf QQ
+	} | {
+		export LC_ALL=C
+		while :
+		do
+			# Why use dd? Because "head -c1" is not portable!
+			hex=`dd bs=2 count=1 2> /dev/null`
+			case $hex in
+				QQ) break;;
+				*n*)
+					echo "Invalid pair of hex-digits" \
+						"in input!" >& 2
+					false
+			esac
+			printf "%u\n" 0x$hex
+		done
+	}
+}
+
+
+premult() {
+	hex2dec | while read bval
+	do
+		bval=`expr '(' '(' $bval + 1 ')' '*' 42 ')' % 257 - 1`
+		printf '%02x' $bval
+	done
+}
+
+
 if which hexdump > /dev/null 2>& 1
 then
 	xd() { hexdump -ve '/1 "%02X"' | tr A-F a-f; }
@@ -52,7 +87,7 @@ fi
 
 
 cleanup() {
-	test -n "$T" && rm -r -- "$T"
+	test -z "$DEBUG" && test -n "$T" && rm -r -- "$T"
 	test -n "$OK" || echo "Failed!" >& 2
 }
 
@@ -61,11 +96,32 @@ OK=
 T=
 trap cleanup 0
 
+while getopts Hi OPT
+do
+	case $OPT in
+		H) hashutil=$OPTARG;;
+		i) iterations=$OPTARG;;
+		*) false
+	esac
+done
+shift `expr $OPTIND - 1`
+
+test -n "$iterations"
+test $iterations -ge 1
+test -n "$hashutil"
+hashutil=`which "$hashutil"`
+test -x "$hashutil"
+
 test $# = 2
 test -f "$1"
 test -f "$2"
  
-T=`mktemp -d "${TMPDIR:-/tmp}/${0##/}".XXXXXXXXXX`
+if test -n "$DEBUG"
+then
+	T=${0##/}.debug; test -d "$T" || mkdir "$T"
+else
+	T=`mktemp -d "${TMPDIR:-/tmp}/${0##/}".XXXXXXXXXX`
+fi
 salt=$T/salt
 sp=$T/salted_psw
 data=$T/data
@@ -73,7 +129,7 @@ other=$T/other
 
 xd < "$1" > "$salt"
 {
-	cat "$salt"
+	premult < "$salt"
 	head -n1 "$2" | iconv -t UTF-8 | tr -d '\n'
 	cat "$salt"
 } > "$sp"
@@ -85,7 +141,7 @@ do
 	while test $n -le $iterations
 	do
 		{
-			int2bytes $n
+			int2bigendian $n
 			int2pad $n
 			cat "$data"
 			cat "$sp"

@@ -4,7 +4,7 @@
 
 set -e
 saltbits=512
-pbkdf=./gbkdf
+pbkdf=gbkdf
 encryption_order='aes-256-cbc#128$256 bf-cbc#64$128 des-ede3-cbc#64$192'
 encryption_order=$encryption_order' rc4#8$128'
 
@@ -18,6 +18,15 @@ cleanup() {
 OK=
 T=
 trap cleanup 0
+
+script=$0
+if ! test -f "$script"
+then
+	script=`which $script`
+	test -f "$script"
+fi
+pbkdf=`dirname "$script"`/$pbkdf
+test -x "$pbkdf"
 
 mode=
 while getopts de OPT

@@ -1,0 +1,80 @@
+A custom PBKDF
+==============
+
+This document shall develop and describe the custom password-based key derivation function.
+
+First, some considerations about already existing ones.
+
+1. HKDF first compresses salt and password into a single hash then expands the result to the desired size. Obviously this cannot have stronger security than the size of the hash function's output.
+
+2. PBKDF2 uses the password only as the key of a pseudo-random function PRF which is another parameter. Although applying the PRF does not necessarily weaken the key, in practice HMACs hare typically used as PRF. And those also limit the security to the size of the hash function's output.
+
+3. OpenSSL's "EVP_BytesToKey" key derivation function derives each segment D_i of output material as D_i = HASH^count(D_(i-1) || password || salt) where D_0 is an empty string and HASH^n(m) = HASH(HASH^(n-1)(m)) and HASH^1(m) = HASH(m).
+
+Of those 3 PBKDFs, only the OpenSSL KDF does not necessarily reduce the strength of the password to that of some hash function's output width.
+
+However, there are still shortcomings in it:
+
+* D_1 can be precalculated from a dictionary up to the point where the salt is added. But see below for the discussion "whether to put salt or password first".
+
+* Repeatedly feeding the hash function its own output directly increases the risk of unkown attractors or fixed points to weaken the entropy in the hash. It would be better to modify the hash a bit before hashing it again, for instance by incorporating a counter value.
+
+Discussion: Whether to put salt or password first?
+
+Assuming that both salt and password are concatenated and included into the same hash, which order is the best?
+
+As suggested in a previous paragraph, putting the password first creates the danger of pre-calculating the hash function up to that state and store the states for all passwords from a dictionary in a table. Therefore, only the salt needs to be brute-forced.
+
+But if the salt is put first, it makes brute-forcing the password easier, because the hash can be precalculated once for the known salt, and then only all possible passwords need to be tried out.
+
+Considering that the salt is likely to be larger than the password, it seems even better of putting the password first - just like OpenSSL does it.
+
+However, there is a way to defeat both problems: Just include the salt twice - before as well as after the password! Then neither precalculation of starting values (salt) nor brute-forcing the inner loop (password plus salt) is feasible any longer.
+
+The next problem is the danger of unknown attractors or fixed points in the hash function. Because of this, it does not seem a good idea to use only the output of some repeatedly hashed input as the next segment of the KDF result stream.
+
+Instead, the results from recursive hashing should only be combined with the values from ealier iterations, such as by XOR or some other mixing function.
+
+I therefore suggest a modified version of the OpenSSL KDF as follows and call it gbkdf ("gb" are my initials):
+
+* It has 3 configuration parameters: An iteration_count <c> greater than zero, a cryptographic hash function <h> and a text/binary flag <mode>.
+
+* It has two inputs: A salt and password; both strings according to <mode> of arbitrary size. In case of mode "text", the password should consist of a single line of text. The terminating newline character, if any, shall not be considered to be part of the password.
+
+* The requested output pseudorandom material is created by concatenating as many D[i] as required to produce the requested amount of output key material, starting with D[1].
+
+* D[i] is an empty string for i == 0
+
+* D[i] := iter(c, D[i - 1]) for all i > 0
+
+* iter(n, data) := data for n == 0
+
+* iter(n, data) := h(int2bigendian(n) || int2pad(n) || iter(n - 1, data) || salt || password || salt) for all n > 0
+
+* int2bigendian(u) is <mode>-specific: For text mode, it is just the decimal ASCII representation of u with as few digits as possible (i. e. no  superfluous leading zero digits). For binary mode, it is the binary big-endian representation of unsigned integer u in as few octets as possible (i. e. without superfluous leading zero octets).
+
+* int2pad(n) produces n ASCII 'U' characters in text mode and n bytes with value 0xAA in binary mode. "U" (0x55) and 0xAA have the same regular bit  pattern of alternating "0" and "1" bits, except that all the bits of both  values are inverted when compared against each other. The purpose of  int2pad() is to avoid feeding password and salt at the same offsets into the  hash function for different steps of the iteration. This may strengthen the KDF against symbolic evaluation optimization attacks, because symbolic variables (the input bytes to be hashed) will be assigned differently for every iteration. It also means that iter() will take more time to compute the larger the iteration count c gets. This is exactly why an iteration count might be used at all: To artificially increase processing time, making brute force attacks on the password more costly.
+
+* Salt should be a randomly chosen binary string of at least 128 bit (16 bytes) in binary mode, but 256 bit (32 bytes) or even 512 bit (64 bytes) are preferable. In text mode, it shall have the same bit size of the underlying binary data, but shall be represented as a hexadecimal string made of decimal digits and lower-case characters.
+
+* The output key material of the KDF will have the same representation as the salt, i. e. a pseudorandom stream of bytes for binary mode or lower-case hex digits for text mode.
+
+* The hash function <h> shall produce binary bytes in binary mode, and hexadecimal digits and lower-case characters in text mode.
+
+* The password shall be encoded as UTF-8 (which is a compatible superset of ASCII, i. e. the password can also be an ASCII string if ASCII characters are sufficient).
+
+This PBKDF does not use XOR to feed the result of the hash function back to its input as suggested above, but rather includes password and salt in every application of the hash function. This will combat the effects of fixed points or hash function attractors as well, because the primary source of information - password and salt - are always used directly as part of the input to the hash function.
+
+Avoiding XOR also allows easier implementation of the PBKDF in shell scripts, where there is usually no easy way of performing the XOR operation on larger blocks of binary data (or at all).
+
+Shell script implementations can also loosen the definition above and use the ASCII representation of the counter instead of the binary big endian representation: Both differ only in the form of representation, but convey the same information.
+
+For the same reason, a shell implementation might choose to represent the salt input and hash digest results as base64- oder hex-encoded text strings rather than binary data blocks: The difference should not matter, because the hash function can be fed any amount of data and compresses the data in its fixed-length output digest, no matter how tightly or redundant the input data is encoded.
+
+Note that a binary- and ASCII-based implementation of the algorithm will give different results; yet the security should be the same.
+
+The rest of this text contains a reference implementation of gbkdf as a Linux shell script, using 100 iterations, MD5 as the hash function, and a 128 bit salt.
+
+It operates in text mode, and outputs an infinite stream of hex bytes until its output stream is closed.
+
+The requesting process read should therefore read as much as required from the script's output, and then close its input stream to make the script stop generating more key material.

@@ -46,38 +46,6 @@ h() {
 }
 
 
-hex2dec() {
-	{
-		tr -c 0-9a-f n
-		printf QQ
-	} | {
-		export LC_ALL=C
-		while :
-		do
-			# Why use dd? Because "head -c1" is not portable!
-			hex=`dd bs=2 count=1 2> /dev/null`
-			case $hex in
-				QQ) break;;
-				*n*)
-					echo "Invalid pair of hex-digits" \
-						"in input!" >& 2
-					false
-			esac
-			printf "%u\n" 0x$hex
-		done
-	}
-}
-
-
-premult() {
-	hex2dec | while read bval
-	do
-		bval=`expr '(' '(' $bval + 1 ')' '*' 42 ')' % 257 - 1`
-		printf '%02x' $bval
-	done
-}
-
-
 if which hexdump > /dev/null 2>& 1
 then
 	xd() { hexdump -ve '/1 "%02X"' | tr A-F a-f; }
@@ -123,16 +91,12 @@ else
 	T=`mktemp -d "${TMPDIR:-/tmp}/${0##/}".XXXXXXXXXX`
 fi
 salt=$T/salt
-sp=$T/salted_psw
+psw=$T/psw
 data=$T/data
 other=$T/other
 
 xd < "$1" > "$salt"
-{
-	premult < "$salt"
-	head -n1 "$2" | iconv -t UTF-8 | tr -d '\n'
-	cat "$salt"
-} > "$sp"
+head -n1 "$2" | iconv -t UTF-8 | tr -d '\n' > "$psw"
 > "$data"
 
 while :
@@ -144,7 +108,12 @@ do
 			int2bigendian $n
 			int2pad $n
 			cat "$data"
-			cat "$sp"
+			int2pad $n
+			cat "$salt"
+			int2pad $n
+			cat "$psw"
+			int2pad $n
+			cat "$salt"
 		} | h > "$other"
 		t=$data; data=$other; other=$t
 		n=`expr $n + 1`

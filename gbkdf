@@ -48,7 +48,7 @@ h() {
 
 if which hexdump > /dev/null 2>& 1
 then
-	xd() { hexdump -ve '/1 "%02X"' | tr A-F a-f; }
+	xd() { hexdump -ve '/1 "%02x"'; }
 else
 	xd() { od -An -tx1 | tr -dc 0-9a-f; }
 fi

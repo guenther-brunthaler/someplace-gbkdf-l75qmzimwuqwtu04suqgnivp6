@@ -104,15 +104,16 @@ do
 	n=1
 	while test $n -le $iterations
 	do
+		n1=`expr $n - 1 || :`
 		{
 			int2bigendian $n
-			int2pad $n
+			int2pad $n1
 			cat "$data"
-			int2pad $n
+			int2pad $n1
 			cat "$salt"
-			int2pad $n
+			int2pad $n1
 			cat "$psw"
-			int2pad $n
+			int2pad $n1
 			cat "$salt"
 		} | h > "$other"
 		t=$data; data=$other; other=$t

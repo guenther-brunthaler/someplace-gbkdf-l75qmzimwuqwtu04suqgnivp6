@@ -37,7 +37,7 @@ Instead, the results from recursive hashing should only be combined with the val
 
 I therefore suggest a modified version of the OpenSSL KDF as follows and call it gbkdf ("gb" are my initials):
 
-* It has 3 configuration parameters: An iteration_count <c> greater than zero, a cryptographic hash function <h> and a text/binary flag <mode>.
+* It has 4 configuration parameters: An iteration_count <c> greater than zero, a cryptographic hash function <h>, a minimum safe password length <ml> and a text/binary flag <mode>.
 
 * It has two inputs: A salt and password; both strings according to <mode> of arbitrary size. In case of mode "text", the password should consist of a single line of text. The terminating newline character, if any, shall not be considered to be part of the password.
 
@@ -49,13 +49,23 @@ I therefore suggest a modified version of the OpenSSL KDF as follows and call it
 
 * iter(n, data) := data for n == 0
 
-* iter(n, data) := h(int2bigendian(n) || int2pad(n - 1) || iter(n - 1, data) || int2pad(n - 1) || salt || int2pad(n - 1) || password || int2pad(n - 1) || salt) for all n > 0
+* iter(n, data) := h(int2bigendian(n) || int2pad(n - 1) || iter(n - 1, data) || int2pad(n - 1) || salt || int2pad(n - 1) || stretch(password, ml) || int2pad(n - 1) || salt) for all n > 0
+
+* stretch(s, minlen) := s for all string_length(s) >= minlen
+
+* stretch(s, minlen) := s || string_prefix(repeat_string(s, 1), string_length(s) - minlen) for all string_length(s) < minlen
+
+* repeat_string(s, n) := int2bigendian(n) || int2pad(n - 1) || repeat_string(s, n + 1)
 
 * int2bigendian(u) is <mode>-specific: For text mode, it is just the decimal ASCII representation of u with as few digits as possible (i. e. no  superfluous leading zero digits). For binary mode, it is the binary big-endian base-256 representation of unsigned integer u in as few octets as possible (i. e. without superfluous leading zero octets).
 
 * int2pad(n) produces n ASCII 'U' characters in text mode and n octets with value 0xAA in binary mode. "U" (0x55) and 0xAA have the same regular bit  pattern of alternating "0" and "1" bits, except that all the bits of both  values are inverted when compared against each other. The actual value of the padding octets is rather unimportant (see below). But it seemed to be a good idea that the octet values inject the same number of 0 and 1 bits into the hash function, so 0x55 and 0xAA was chosen. The purpose of int2pad() is to avoid repeatedly feeding components like password and salt at the same offsets into the hash function during different steps of the iteration. This may strengthen the KDF against symbolic evaluation optimization attacks, because symbolic variables (the input bytes to be hashed) will be assigned differently for every iteration. It also means that iter() will take more time to compute the larger the iteration count c gets. This is exactly why an iteration count might be used at all: To artificially increase processing time, making brute force attacks on the password more costly.
 
+string_prefix(s, n) returns the first n characters (in text mode) or the first n bytes (in binary mode) of the string s. This means that in binary mode incomplete UTF-8 sequences could be produces, which is not possible in text mode.
+
 * Salt should be a randomly chosen binary string of at least 128 bit (16 bytes) in binary mode, but 256 bit (32 bytes) or even 512 bit (64 bytes) might be preferable. The absolute minimum size should be 64 bit (8 bytes), but this is not recommended and should only be used where encoded message size really matters. In text mode, it shall have the same bit size of the underlying binary data, but shall be represented as a hexadecimal string made of decimal digits and lower-case characters.
+
+* <ml> is a configuration parameter which helps agains side-channel timing attacks. If <ml> is zero, the processing time of the algorithm is roughly proportional to the password length. An attacker can measure this time and infer the password length with low granularity from the measured time. If the attacker knows that the password is short enough, he might consider it promising to run a brute force attack on the password. The <ml> parameter stretches the password to <ml> characters, but only if the password is actually shorter than that. Stretching does not increase the entropy or security of the password at all, but it makes it impossible for the attacker to distinguish a short password from a password with a size of <ml> characters. <ml> should be chosen long enough that a brute-force attack on a password of this length is considered useless by the attacker, unless the attacker has to resources to run brute-force attacks on *all* passwords. In this case, password stretching will not make any difference in security, and the iteration count is the only way to make brute-forcing of weak passwords harder. Therefore, <ml> only protects against attackers with limited resources who cannot afford a brute-force attack on all passwords, but have sufficient resources to run brute-force attacks on a certain number of selected passwords. In this case, <ml> makes it impossible for the attacher to select promising passwords for brute-forcing based on the measured processing time.
 
 * The output key material of the KDF will have the same representation as the salt, i. e. a pseudorandom stream of bytes for binary mode or lower-case hex digits for text mode.
 

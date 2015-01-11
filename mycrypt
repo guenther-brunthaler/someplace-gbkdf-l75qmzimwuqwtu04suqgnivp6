@@ -1,6 +1,14 @@
 #! /bin/sh
 # Encrypt (-e) or decrypt (-d) stdin to stdout. Only argument: The pathame of
 # a file containing the password in current locale encoding in the first line.
+#
+# This script always uses /tmp (or the directory specified with the -t option)
+# to store temporary working files containing sensitive data (mlock-like
+# functionality is not available in shell scripts). $TMPDIR is ignored. It is
+# therefore mandatory that the temporary directory is either a RAM disk or
+# resides on a securely encrypted disk. Likewise, if the system has been
+# configured to use swap space, this swap space should be encrypted as well in
+# order to avoid leaking sensitive data there.
 
 set -e
 saltbits=512
@@ -29,11 +37,13 @@ pbkdf=`dirname "$script"`/$pbkdf
 test -x "$pbkdf"
 
 mode=
-while getopts de OPT
+unset TMPDIR
+while getopts det: OPT
 do
 	case $OPT in
 		e) mode=encrypt;;
 		d) mode=decrypt;;
+		t) TMPDIR=$OPTARG;;
 		*) false
 	esac
 done
@@ -44,7 +54,8 @@ psw=$1
 test -n "$psw"
 test -f "$psw"
 
-T=`mktemp -d "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX`
+test -d "${TMPDIR:=/tmp}"
+T=`mktemp -d "$TMPDIR/${0##*/}".XXXXXXXXXX`
 
 # Get salt.
 salt=$T/salt
@@ -67,7 +78,7 @@ parse_algo() {
 
 set -- $encryption_order
 # Generate keys.
-"$pbkdf" "$salt" "$psw" | {
+"$pbkdf" -t"$TMPDIR" "$salt" "$psw" | {
 	lastbbits=8
 	for algo
 	do

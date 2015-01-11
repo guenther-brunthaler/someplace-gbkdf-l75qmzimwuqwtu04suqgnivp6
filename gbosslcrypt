@@ -45,7 +45,7 @@ do
 		e) mode=encrypt;;
 		d) mode=decrypt;;
 		t) TMPDIR=$OPTARG;;
-		N) passthrough_flags=-n;;
+		N) passthrough_flags=-$OPT;;
 		*) false
 	esac
 done

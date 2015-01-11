@@ -112,19 +112,16 @@ then
 		# first converted to WINDOWS-1252 and then to UTF-8. The first
 		# conversion guarantees that no UTF-16 substutition blocks or
 		# decomposed UNICODE characters will be present.
-		head -n1 "$2" | tr -d '\n' \
-			| iconv -t WINDOWS-1252 \
+		head -n1 "$2" | tr -d '\n' | iconv -t WINDOWS-1252 \
 			| iconv -f WINDOWS-1252 -t UTF-8 > "$psw"
 	else
-		# If -u (bot not -p) has been specified, the password is
+		# If -u (but not -p) has been specified, the password is
 		# directly converted to UTF-8. This allows arbitrary
 		# characters to be used in the input, but the script can no
 		# longer normalize decomposed characters into composed ones as
 		# dictated by the specification. It is therefore up to the
 		# user to not provide decomposed characters on input.
-		head -n1 "$2" | tr -d '\n' \
-			| iconv -t WINDOWS-1252 \
-			| iconv -f WINDOWS-1252 -t UTF-8 > "$psw"
+		head -n1 "$2" | tr -d '\n' | iconv -t UTF-8 > "$psw"
 	fi
 else
 	# iconv is not required at all if -p has been specified, but then no

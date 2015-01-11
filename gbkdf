@@ -84,7 +84,6 @@ test -n "$iterations"
 test $iterations -ge 1
 test -n "$hashutil"
 hashutil=`which "$hashutil"`
-test -x "$hashutil"
 
 test $# = 2
 test -f "$1"
@@ -106,7 +105,7 @@ if test -z "$bypass_normalization"
 then
 	# Not using -N is preferred but requires about 250k of additional
 	# installation requirements for idn binary and libidn shared library.
-	head -n1 "$2" | idn -n | tr -d '\n' > "$psw"
+	idn=`which idn`; head -n1 "$2" | "$idn" -n | tr -d '\n' > "$psw"
 else
 	# idn and libidn are not required if -N has been specified, but then
 	# no attempt will be made to normalize the password representation,

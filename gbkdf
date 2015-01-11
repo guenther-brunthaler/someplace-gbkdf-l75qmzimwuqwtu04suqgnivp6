@@ -12,11 +12,13 @@
 # and any newline character at the end of the input line is not considered to
 # be part of the password.
 #
-# This script uses $TMPDIR (defaults to /tmp) to store temporary working files
-# containing sensitive data. It is therefore mandatory that $TMPDIR is either
-# a RAM disk or resides on a securely encrypted disk. Likewise, if the system
-# has been configured to use swap space, this swap space should be encrypted
-# as well in order to avoid leaking sensitive data there.
+# This script always uses /tmp (or the directory specified with the -t option)
+# to store temporary working files containing sensitive data (mlock-like
+# functionality is not available in shell scripts). $TMPDIR is ignored. It is
+# therefore mandatory that the temporary directory is either a RAM disk or
+# resides on a securely encrypted disk. Likewise, if the system has been
+# configured to use swap space, this swap space should be encrypted as well in
+# order to avoid leaking sensitive data there.
 
 set -e
 # Set defaults.
@@ -64,11 +66,13 @@ OK=
 T=
 trap cleanup 0
 
-while getopts H:i: OPT
+unset TMPDIR
+while getopts H:i:t: OPT
 do
 	case $OPT in
 		H) hashutil=$OPTARG;;
 		i) iterations=$OPTARG;;
+		t) test -d "$OPTARG"; TMPDIR=$OPTARG;;
 		*) false
 	esac
 done

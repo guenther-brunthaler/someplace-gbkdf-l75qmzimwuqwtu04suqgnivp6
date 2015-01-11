@@ -66,17 +66,15 @@ OK=
 T=
 trap cleanup 0
 
-use_password_as_is=
-unrestricted_unicode_range_for_normalization=
 unset TMPDIR
-while getopts H:i:t:up OPT
+bypass_normalization=
+while getopts H:i:t:N OPT
 do
 	case $OPT in
 		H) hashutil=$OPTARG;;
 		i) iterations=$OPTARG;;
 		t) test -d "$OPTARG"; TMPDIR=$OPTARG;;
-		p) use_password_as_is=Y;;
-		u) unrestricted_unicode_range_for_normalization=Y;;
+		N) bypass_normalization=Y;;
 		*) false
 	esac
 done
@@ -104,32 +102,16 @@ data=$T/data
 other=$T/other
 
 xd < "$1" > "$salt"
-if test -z "$use_password_as_is"
+if test -z "$bypass_normalization"
 then
-	if test -z "$unrestricted_unicode_range_for_normalization"
-	then
-		# If neither -p nor -u have been specified, the password is
-		# first converted to WINDOWS-1252 and then to UTF-8. The first
-		# conversion guarantees that no UTF-16 substutition blocks or
-		# decomposed UNICODE characters will be present.
-		head -n1 "$2" | tr -d '\n' | iconv -t WINDOWS-1252 \
-			| iconv -f WINDOWS-1252 -t UTF-8 > "$psw"
-	else
-		# If -u (but not -p) has been specified, the password is
-		# directly converted to UTF-8. This allows arbitrary
-		# characters to be used in the input, but the script can no
-		# longer normalize decomposed characters into composed ones as
-		# dictated by the specification. It is therefore up to the
-		# user to not provide decomposed characters on input.
-		head -n1 "$2" | tr -d '\n' | iconv -t UTF-8 > "$psw"
-	fi
+	# Not using -N is preferred but requires about 250k of additional
+	# installation requirements for idn binary and libidn shared library.
+	head -n1 "$2" | idn -n | tr -d '\n' > "$psw"
 else
-	# iconv is not required at all if -p has been specified, but then no
-	# attempt is made to convert the password's representation into
-	# normalized UTF-8. In this case the user is expected to provide a
-	# password which has already been properly normalized to UTF-8
-	# according to the specification. This will always be the case if the
-	# password consists of ASCII characters only.
+	# idn and libidn are not required if -N has been specified, but then
+	# no attempt will be made to normalize the password representation,
+	# making the password system- and locale-dependent. (This problem can
+	# still be avoided by restricting the password to ASCII characters.)
 	head -n1 "$2" | tr -d '\n' > "$psw"
 fi
 > "$data"

@@ -38,12 +38,14 @@ test -x "$pbkdf"
 
 mode=
 unset TMPDIR
-while getopts det: OPT
+passthrough_flags=
+while getopts det:N OPT
 do
 	case $OPT in
 		e) mode=encrypt;;
 		d) mode=decrypt;;
 		t) TMPDIR=$OPTARG;;
+		N) passthrough_flags=-n;;
 		*) false
 	esac
 done
@@ -78,7 +80,7 @@ parse_algo() {
 
 set -- $encryption_order
 # Generate keys.
-"$pbkdf" -t"$TMPDIR" "$salt" "$psw" | {
+"$pbkdf" -t"$TMPDIR" $passthrough_flags "$salt" "$psw" | {
 	lastbbits=8
 	for algo
 	do

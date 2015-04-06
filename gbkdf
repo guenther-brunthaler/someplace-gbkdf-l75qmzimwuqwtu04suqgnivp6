@@ -93,7 +93,7 @@ if test -n "$DEBUG"
 then
 	T=${0##/}.debug; test -d "$T" || mkdir "$T"
 else
-	T=`mktemp -d "${TMPDIR:-/tmp}/${0##/}".XXXXXXXXXX`
+	T=`mktemp -d "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX`
 fi
 salt=$T/salt
 psw=$T/psw

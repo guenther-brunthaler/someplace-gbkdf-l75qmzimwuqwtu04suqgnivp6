@@ -100,6 +100,10 @@ psw=$T/psw
 data=$T/data
 other=$T/other
 
+chopsw() {
+	tr -d '\n' > "$psw"
+}
+
 xd < "$1" > "$salt"
 if test -n "$bypass_normalization"
 then
@@ -107,10 +111,10 @@ then
 	# no attempt will be made to normalize the password representation,
 	# making the password system- and locale-dependent. (This problem can
 	# still be avoided by restricting the password to ASCII characters.)
-	head -n1 "$2" | tr -d '\n' > "$psw"
+	head -n1 "$2" | chopsw
 elif
 	cvt=`which iconv 2> /dev/null` \
-	&& head -n1 "$2" | "$cvt" -t US-ASCII > "$psw" 2> /dev/null
+	&& head -n1 "$2" | "$cvt" -t US-ASCII 2> /dev/null | chopsw
 then
 	# Password has already been converted. It only consists of US-ASCII
 	# characters and therefore the bloated UNICODE conversion tools are
@@ -120,11 +124,11 @@ elif cvt=`which idn 2> /dev/null`
 then
 	# Not using -N is preferred but requires about 250k of additional
 	# installation requirements for idn binary and libidn shared library.
-	unset CHARSET; head -n1 "$2" | "$cvt" -n | tr -d '\n' > "$psw"
+	unset CHARSET; head -n1 "$2" | "$cvt" -n | chopsw
 else
 	# The even more bloated uconv can also be used instead of idn.
 	cvt=`which uconv`
-	head -n1 "$2" | "$cvt" -x '::nfkc;' -t UTF-8 | tr -d '\n' > "$psw"
+	head -n1 "$2" | "$cvt" -x '::nfkc;' -t UTF-8 | chopsw
 fi
 > "$data"
 

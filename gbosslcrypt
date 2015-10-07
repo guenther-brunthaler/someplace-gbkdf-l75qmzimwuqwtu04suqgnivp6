@@ -1,6 +1,7 @@
 #! /bin/sh
-# Encrypt (-e) or decrypt (-d) stdin to stdout. Only argument: The pathame of
-# a file containing the password in current locale encoding in the first line.
+# Encrypt (-e) or decrypt (-d) stdin to stdout. The only argument: The pathame
+# of a file containing the password in current locale encoding in the first
+# line.
 #
 # This script always uses /tmp (or the directory specified with the -t option)
 # to store temporary working files containing sensitive data (mlock-like
@@ -9,6 +10,17 @@
 # resides on a securely encrypted disk. Likewise, if the system has been
 # configured to use swap space, this swap space should be encrypted as well in
 # order to avoid leaking sensitive data there.
+#
+# Data encrypted by this script will be binary output. The recommended file
+# extension is ".gbo". It text-based output is required, conversion into
+# base-64 or basE91-formats is recommended, and the file extensions could be
+# something like "_gbo.b64" and "_gbo.b91", respecively.
+#
+# gbosslcrypt version 15.280
+#
+# (c) 2015 by Guenther Brunthaler.
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
 
 set -e
 saltbits=512
@@ -18,12 +30,16 @@ encryption_order=$encryption_order' rc4#8$128'
 
 
 cleanup() {
+	local rc=$?
 	test -n "$T" && rm -r -- "$T"
-	test -n "$OK" || echo "Failed!" >& 2
+	test $rc = 0 || {
+		echo "${0##*/} failed!"
+		echo "See the comments at the beginning of that script for" \
+			"usage instructions."
+	} >& 2
 }
 
 
-OK=
 T=
 trap cleanup 0
 
@@ -33,8 +49,9 @@ then
 	script=`which $script`
 	test -f "$script"
 fi
-pbkdf=`dirname "$script"`/$pbkdf
-test -x "$pbkdf"
+sxt=${0##*/}; sxt=${sxt#${sxt%.*}}
+pbkdf=`dirname -- "$script"`/$pbkdf$sxt
+test -f "$pbkdf"
 
 mode=
 unset TMPDIR
@@ -80,7 +97,7 @@ parse_algo() {
 
 set -- $encryption_order
 # Generate keys.
-"$pbkdf" -t"$TMPDIR" $passthrough_flags "$salt" "$psw" | {
+sh "$pbkdf" -t"$TMPDIR" $passthrough_flags "$salt" "$psw" | {
 	lastbbits=8
 	for algo
 	do
@@ -134,5 +151,3 @@ crypt() {
 }
 
 crypt "$@"
-
-OK=Y

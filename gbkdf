@@ -19,6 +19,12 @@
 # resides on a securely encrypted disk. Likewise, if the system has been
 # configured to use swap space, this swap space should be encrypted as well in
 # order to avoid leaking sensitive data there.
+#
+# gbkdf version 15.280
+#
+# (c) 2015 by Guenther Brunthaler.
+# This script is free software.
+# Distribution is permitted under the terms of the GPLv3.
 
 set -e
 # Set defaults.
@@ -57,12 +63,16 @@ fi
 
 
 cleanup() {
+	local rc=$?
 	test -z "$DEBUG" && test -n "$T" && rm -r -- "$T"
-	test -n "$OK" || echo "Failed!" >& 2
+	test $rc = 0 || {
+		echo "${0##*/} failed!"
+		echo "See the comments at the beginning of that script for" \
+			"usage instructions."
+	} >& 2
 }
 
 
-OK=
 T=
 trap cleanup 0
 
@@ -154,4 +164,3 @@ do
 	done
 	cat "$data" || break
 done
-OK=Y

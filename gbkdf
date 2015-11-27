@@ -12,6 +12,15 @@
 # and any newline character at the end of the input line is not considered to
 # be part of the password.
 #
+# Both input argument files will only be read once and can also be FIFOs or
+# character devices.
+#
+# Because password normalization is a potentially complex process, the -P
+# option can be specified which changes the operation of the script: The salt
+# is not used in this mode, and the effective bytes resulting from password
+# normalization (or just the password itself if none was required) will be
+# written to standard output. No newline will be present in this output.
+#
 # This script always uses /tmp (or the directory specified with the -t option)
 # to store temporary working files containing sensitive data (mlock-like
 # functionality is not available in shell scripts). $TMPDIR is ignored. It is
@@ -77,54 +86,72 @@ T=
 trap cleanup 0
 
 unset TMPDIR
-bypass_normalization=
-while getopts H:i:t:N OPT
+bypass_normalization=false
+extract_password_bytes=false
+dont_assume_ascii_compatibility=false
+while getopts H:i:t:NAP OPT
 do
 	case $OPT in
 		H) hashutil=$OPTARG;;
 		i) iterations=$OPTARG;;
 		t) test -d "$OPTARG"; TMPDIR=$OPTARG;;
-		N) bypass_normalization=Y;;
+		N) bypass_normalization=true;;
+		A) dont_assume_ascii_compatibility=true;;
+		P) extract_password_bytes=true;;
 		*) false
 	esac
 done
 shift `expr $OPTIND - 1`
+
+test $# = 2
 
 test -n "$iterations"
 test $iterations -ge 1
 test -n "$hashutil"
 hashutil=`which "$hashutil"`
 
-test $# = 2
-test -f "$1"
-test -f "$2"
- 
 if test -n "$DEBUG"
 then
 	T=${0##/}.debug; test -d "$T" || mkdir "$T"
 else
 	T=`mktemp -d "${TMPDIR:-/tmp}/${0##*/}".XXXXXXXXXX`
 fi
+
+insalt=$T/insalt
+inpsw=$T/inpsw
 salt=$T/salt
 psw=$T/psw
 data=$T/data
 other=$T/other
 
+cat -- "$1" > "$insalt" # Salt may be empty.
+cat -- "$2" > "$inpsw"
+test -s "$inpsw" # But password must not be empty!
+
 chopsw() {
 	tr -d '\n' > "$psw"
 }
 
-xd < "$1" > "$salt"
-if test -n "$bypass_normalization"
+xd < "$insalt" > "$salt"
+if
+	$bypass_normalization \
+	|| test $dont_assume_ascii_compatibility = false \
+	&& test `
+		head -n1 -- "$inpsw" | tr -d '\n' | tr -d '\040-\176' | wc -c
+	` = 0
 then
 	# idn and libidn are not required if -N has been specified, but then
 	# no attempt will be made to normalize the password representation,
-	# making the password system- and locale-dependent. (This problem can
-	# still be avoided by restricting the password to ASCII characters.)
-	head -n1 "$2" | chopsw
+	# making the password system- and locale-dependent. Normalization will
+	# also be skipped if the password consists only of of printable ASCII
+	# characters.
+	head -n1 -- "$inpsw" | chopsw
 elif
+	# Just in case some strange locale maps ASCII characters into
+	# non-ASCII byte ranges, or if -A option has been specified.
 	cvt=`which iconv 2> /dev/null` \
-	&& head -n1 "$2" | "$cvt" -t US-ASCII 2> /dev/null | chopsw
+	&& head -n1 -- "$inpsw" | "$cvt" -t US-ASCII 2> /dev/null | chopsw \
+	&& test -s "$psw"
 then
 	# Password has already been converted. It only consists of US-ASCII
 	# characters and therefore the bloated UNICODE conversion tools are
@@ -134,14 +161,23 @@ elif cvt=`which idn 2> /dev/null`
 then
 	# Not using -N is preferred but requires about 250k of additional
 	# installation requirements for idn binary and libidn shared library.
-	unset CHARSET; head -n1 "$2" | "$cvt" -n | chopsw
+	unset CHARSET; head -n1 -- "$inpsw" | "$cvt" -n | chopsw \
+	&& test -s "$psw"
 else
 	# The even more bloated uconv can also be used instead of idn.
 	cvt=`which uconv`
-	head -n1 "$2" | "$cvt" -x '::nfkc;' -t UTF-8 | chopsw
+	head -n1 -- "$inpsw" | "$cvt" -x '::nfkc;' -t UTF-8 | chopsw
+	test -s "$psw"
 fi
-> "$data"
 
+if $extract_password_bytes
+then
+	cat "$psw"
+	exit
+fi
+rm -- "$insalt" "$inpsw"
+
+> "$data"
 while :
 do
 	n=1

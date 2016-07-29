@@ -16,9 +16,10 @@
 # base-64 or basE91-formats is recommended, and the file extensions could be
 # something like "_gbo.b64" and "_gbo.b91", respecively.
 #
-# gbosslcrypt version 15.331
+# gbosslcrypt version 2016.211
 #
-# (c) 2015 by Guenther Brunthaler.
+# Copyright (c) 2015-2016 Guenther Brunthaler. All rights reserved.
+# 
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
 
@@ -30,7 +31,7 @@ encryption_order=$encryption_order' rc4#8$128'
 
 
 cleanup() {
-	local rc=$?
+	local rc; rc=$?
 	test -n "$T" && rm -r -- "$T"
 	test $rc = 0 || {
 		echo "${0##*/} failed!"
@@ -42,6 +43,7 @@ cleanup() {
 
 T=
 trap cleanup 0
+trap 'exit $?' INT QUIT TERM HUP
 
 script=$0
 if ! test -f "$script"
@@ -56,12 +58,14 @@ test -f "$pbkdf"
 mode=
 unset TMPDIR
 passthrough_flags=
-while getopts det:NA OPT
+shell_cmd=sh
+while getopts det:NAs: OPT
 do
 	case $OPT in
 		e) mode=encrypt;;
 		d) mode=decrypt;;
 		t) TMPDIR=$OPTARG;;
+		s) shell_cmd=$OPTARG;; # May include arguments!
 		[AN]) passthrough_flags=-$OPT;;
 		*) false
 	esac
@@ -97,7 +101,7 @@ parse_algo() {
 
 set -- $encryption_order
 # Generate keys.
-sh "$pbkdf" -t"$TMPDIR" $passthrough_flags "$salt" "$psw" | {
+$shell_cmd "$pbkdf" -t"$TMPDIR" $passthrough_flags "$salt" "$psw" | {
 	lastbbits=8
 	for algo
 	do

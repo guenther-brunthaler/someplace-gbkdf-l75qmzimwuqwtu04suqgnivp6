@@ -29,10 +29,11 @@
 # configured to use swap space, this swap space should be encrypted as well in
 # order to avoid leaking sensitive data there.
 #
-# gbkdf version 15.280
+# gbkdf version 2016.211
 #
-# (c) 2015 by Guenther Brunthaler.
-# This script is free software.
+# Copyright (c) 2015-2016 Guenther Brunthaler. All rights reserved.
+# 
+# This source file is free software.
 # Distribution is permitted under the terms of the GPLv3.
 
 set -e
@@ -72,7 +73,7 @@ fi
 
 
 cleanup() {
-	local rc=$?
+	local rc; rc=$?
 	test -z "$DEBUG" && test -n "$T" && rm -r -- "$T"
 	test $rc = 0 || {
 		echo "${0##*/} failed!"
@@ -84,6 +85,7 @@ cleanup() {
 
 T=
 trap cleanup 0
+trap 'exit $?' INT QUIT TERM HUP
 
 unset TMPDIR
 bypass_normalization=false
@@ -137,6 +139,8 @@ if
 	$bypass_normalization \
 	|| test $dont_assume_ascii_compatibility = false \
 	&& test `
+		# Problem: BusyBox "tr" does not support octal escapes even
+		# though POSIX says it should.
 		head -n1 -- "$inpsw" | tr -d '\n' | tr -d '\040-\176' | wc -c
 	` = 0
 then
@@ -161,13 +165,25 @@ elif cvt=`which idn 2> /dev/null`
 then
 	# Not using -N is preferred but requires about 250k of additional
 	# installation requirements for idn binary and libidn shared library.
+	# "idn" is a utility shipped along with "libidn" on some distros.
 	unset CHARSET; head -n1 -- "$inpsw" | "$cvt" -n | chopsw \
 	&& test -s "$psw"
-else
-	# The even more bloated uconv can also be used instead of idn.
-	cvt=`which uconv`
+elif cvt=`which uconv 2> /dev/null`
+then
+	# The even more bloated "uconv" utility can also be used instead of
+	# "idn". It is shipped along with "libicu" on some distros.
 	head -n1 -- "$inpsw" | "$cvt" -x '::nfkc;' -t UTF-8 | chopsw
 	test -s "$psw"
+else
+	{
+		echo "Utilities 'idn' or 'conv' are required!"
+		echo "Packages which might be worth checking:"
+		for p in libidn icu libicu icu-devtools
+		do
+			echo "* $p"
+		done
+	} >& 2
+	false || exit
 fi
 
 if $extract_password_bytes

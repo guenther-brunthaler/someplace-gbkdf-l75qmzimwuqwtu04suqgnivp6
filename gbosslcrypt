@@ -16,7 +16,7 @@
 # base-64 or basE91-formats is recommended, and the file extensions could be
 # something like "_gbo.b64" and "_gbo.b91", respecively.
 #
-# gbosslcrypt version 2016.211
+# gbosslcrypt version 2016.282
 #
 # Copyright (c) 2015-2016 Guenther Brunthaler. All rights reserved.
 # 
@@ -31,7 +31,7 @@ encryption_order=$encryption_order' rc4#8$128'
 
 
 cleanup() {
-	local rc; rc=$?
+	rc=$?
 	test -n "$T" && rm -r -- "$T"
 	test $rc = 0 || {
 		echo "${0##*/} failed!"
@@ -46,7 +46,7 @@ trap cleanup 0
 trap 'exit $?' INT QUIT TERM HUP
 
 script=$0
-if ! test -f "$script"
+if test ! -f "$script"
 then
 	script=`which $script`
 	test -f "$script"

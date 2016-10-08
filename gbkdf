@@ -50,7 +50,7 @@ int2bigendian() {
 
 
 int2pad() {
-	local n=$1
+	local n; n=$1
 	while test $n != 0
 	do
 		printf U
@@ -73,7 +73,7 @@ fi
 
 
 cleanup() {
-	local rc; rc=$?
+	rc=$?
 	test -z "$DEBUG" && test -n "$T" && rm -r -- "$T"
 	test $rc = 0 || {
 		echo "${0##*/} failed!"
@@ -103,7 +103,7 @@ do
 		*) false
 	esac
 done
-shift `expr $OPTIND - 1`
+shift `expr $OPTIND - 1 || :`
 
 test $# = 2
 

@@ -1,0 +1,41 @@
+GB's password-based key derivation function
+===========================================
+
+PBKDF-custom.txt - explains and specifies the design of GB's
+password-based key derivation function. Unlike other PBKDFs, GB's
+PBKDF has the properties of retaining the full entropy of salt
+and key, and not restrict them to the block sizes of internally
+used cryptographic primitives. It is parameterized with a
+cryptographic hash function of arbitrary size, an iteration
+count, and an operation mode (hexadecimal or binary internal
+processing and output).
+
+enter_psw - Script for entering a pass phrase with no echoing of
+input, writing the input line to a file, the name of which is the
+only argument to the script.
+
+gbkdf - Script for generating an infinite amount of key material
+derived from a pass phrase. It represents a low-performance
+implementation of GB's password-based key derivation function.
+The script requires two filenames as arguments. The first file
+contains a binary salt of arbitrary size. The second file
+contains the pass phrase in its first and only line. The pass
+phrase should be encoding using the current locale, and will be
+normalized to UTF-8 NFKC by the script before processing. The
+newline will be stripped and not be treated as part of the pass
+phrase. Deriving from both the binary salt and the textual pass
+phrase, the script then emits an endless stream of key material
+as hexadecimal bytes. Just read as many bytes as you need, and
+then stop reading any further.
+
+gbosslcrypt - Script using openssl and kbkdf to encrypt or
+decrypt data read from its standard input stream, writing the
+result to its standard output stream. Takes two arguments - "-e"
+for encryption and "-d" for decryption. The second argument is a
+text file containing the pass phrase in its first line. The
+encryption is used a 4-fold encryption using the following
+standard algorithms in this order: AES-256-CBC (256 bit key, 128
+bit block size), BF-CBC (128 bit key, 64 bit block size),
+DES-EDE3-CBC (192 bit key, 64 bit block size), ARC4 (128 bit key,
+stream cipher). The required keys are drived from the pass phrase
+using the gbkdf script.

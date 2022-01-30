@@ -16,9 +16,9 @@
 # base-64 or basE91-formats is recommended, and the file extensions could be
 # something like "_gbo.b64" and "_gbo.b91", respecively.
 #
-# gbosslcrypt version 2016.282
+# gbosslcrypt version 2022.30
 #
-# Copyright (c) 2015-2016 Guenther Brunthaler. All rights reserved.
+# Copyright (c) 2015-2022 Guenther Brunthaler. All rights reserved.
 # 
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
@@ -26,9 +26,10 @@
 set -e
 saltbits=512
 pbkdf=gbkdf
+# Cipher specs: "#" followed by block sizes in bits, "$" by key size in bits.
+# Every cipher algo must not occur more than once in the specs.
 encryption_order='aes-256-cbc#128$256 bf-cbc#64$128 des-ede3-cbc#64$192'
 encryption_order=$encryption_order' rc4#8$128'
-
 
 cleanup() {
 	rc=$?
@@ -40,7 +41,6 @@ cleanup() {
 	} >& 2
 }
 
-
 T=
 trap cleanup 0
 trap 'exit $?' INT QUIT TERM HUP
@@ -48,7 +48,7 @@ trap 'exit $?' INT QUIT TERM HUP
 script=$0
 if test ! -f "$script"
 then
-	script=`which $script`
+	script=`command -v -- "$script"`
 	test -f "$script"
 fi
 sxt=${0##*/}; sxt=${sxt#${sxt%.*}}
@@ -66,7 +66,10 @@ do
 		d) mode=decrypt;;
 		t) TMPDIR=$OPTARG;;
 		s) shell_cmd=$OPTARG;; # May include arguments!
-		[AN]) passthrough_flags=-$OPT;;
+		[AN])
+			passthrough_flags=$passthrough_flags`:
+				`${passthrough_flags:+ }-$OPT
+			;;
 		*) false
 	esac
 done
@@ -78,7 +81,7 @@ test -n "$psw"
 test -f "$psw"
 
 test -d "${TMPDIR:=/tmp}"
-T=`mktemp -d "$TMPDIR/${0##*/}".XXXXXXXXXX`
+T=`mktemp -d -- "$TMPDIR/${0##*/}".XXXXXXXXXX`
 
 # Get salt.
 salt=$T/salt
@@ -124,13 +127,13 @@ then
 	set -- "$@" --s --e
 	while :
 	do
-		while test x"$2" != x"--s"
+		while test "$2" != "--s"
 		do
 			set -- "$@" "$1"; shift
 		done
 		last=$1; shift
-		test x"$last" = x"--e" && break
-		while test x"$1" != x"--e"
+		test "$last" = "--e" && break
+		while test "$1" != "--e"
 		do
 			set -- "$@" "$1"; shift
 		done
@@ -150,7 +153,10 @@ crypt() {
 			-nosalt -pass "file:$T/$algo.psw" -md rmd160
 		test $mode = decrypt && set -- "$@" -d
 		test -e "$T/$algo.pad" || set -- "$@" -nopad
-		"$@"
+		"$@" 2> "$T/algo.log" || {
+			cat < "$T/algo.log" >& 2
+			false || exit
+		}
 	fi
 }
 

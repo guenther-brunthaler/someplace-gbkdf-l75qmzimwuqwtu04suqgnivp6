@@ -16,9 +16,13 @@
 # base-64 or basE91-formats is recommended, and the file extensions could be
 # something like "_gbo.b64" and "_gbo.b91", respecively.
 #
-# gbosslcrypt version 2022.30
+# The script will normally encrypt using a salt taken from /dev/urandom. But
+# if option "-S <saltfile>" is given, the salt will be taken from that file.
+# When specifying the same option when decrypting, the salt will be saved to
+# <saltfile> which must not exist yet.
 #
-# Copyright (c) 2015-2022 Guenther Brunthaler. All rights reserved.
+# gbosslcrypt version 2023.303
+# Copyright (c) 2015-2023 Guenther Brunthaler. All rights reserved.
 # 
 # This script is free software.
 # Distribution is permitted under the terms of the GPLv3.
@@ -59,13 +63,15 @@ mode=
 unset TMPDIR
 passthrough_flags=
 shell_cmd=sh
-while getopts det:NAs: OPT
+xtern_salt=
+while getopts S:det:NAs: OPT
 do
 	case $OPT in
 		e) mode=encrypt;;
 		d) mode=decrypt;;
 		t) TMPDIR=$OPTARG;;
 		s) shell_cmd=$OPTARG;; # May include arguments!
+		S) test "$OPTARG"; xtern_salt=$OPTARG;;
 		[AN])
 			passthrough_flags=$passthrough_flags`:
 				`${passthrough_flags:+ }-$OPT
@@ -88,10 +94,24 @@ salt=$T/salt
 saltbytes=`expr $saltbits / 8`
 if test $mode = encrypt
 then
-	dd if=/dev/urandom bs=$saltbytes count=1 of="$salt" 2> /dev/null
+	if test "$xtern_salt"
+	then
+		test -e "$xtern_salt"
+		dd if="$xtern_salt" bs=$saltbytes count=1 of="$salt" \
+			2> /dev/null
+	else
+		dd if=/dev/urandom bs=$saltbytes count=1 of="$salt" \
+			2> /dev/null
+	fi
 	cat "$salt"
 else
 	dd bs=$saltbytes count=1 of="$salt" 2> /dev/null
+	if test "$xtern_salt"
+	then
+		test ! -e "$xtern_salt"
+		test -d "`dirname -- "$xtern_salt"`"
+		cat < "$salt" > "$xtern_salt"
+	fi
 fi
 
 # Split $algo into $algo, $blkbits and $keybits.
